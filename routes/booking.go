@@ -1,1 +1,0 @@
-// booking.go - Placeholder
