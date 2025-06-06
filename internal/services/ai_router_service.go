@@ -1,3 +1,4 @@
+// go-backend/internal/services/ai_router_service.go
 package services
 
 import (
@@ -9,114 +10,137 @@ import (
 	"time"
 )
 
-// AIRequest โครงสร้างที่ส่งไปยัง ai-service
-type AIRequest struct {
-	UserID string                 `json:"user_id"`
-	Prompt string                 `json:"prompt"`
-	Model  string                 `json:"model"`
-	Extra  map[string]interface{} `json:"extra,omitempty"`
+// (อย่า import "github.com/poomiiz/go-backend/internal/routes" ที่นี่เด็ดขาด)
+
+type AIInterpretRequest struct {
+	UserID         string `json:"userId"`
+	ConversationID string `json:"conversationId"`
+	Message        string `json:"message"`
+}
+type AIInterpretResponse struct {
+	Intent     string  `json:"intent"`
+	Confidence float64 `json:"confidence"`
 }
 
-// AIResponse โครงสร้างที่รับมาจาก ai-service
-type AIResponse struct {
-	Reply string `json:"reply"`
-	// …สามารถขยายได้ตาม response ของ FastAPI
+type AISummarizeRequest struct {
+	ConversationID string   `json:"conversationId"`
+	Messages       []string `json:"messages"`
+}
+type AISummarizeResponse struct {
+	Summary string `json:"summary"`
 }
 
-type AIRouterService struct {
+type AIChatRequest struct {
+	UserID         string `json:"userId"`
+	ConversationID string `json:"conversationId"`
+	Message        string `json:"message"`
+	Model          string `json:"model"`
+}
+type AIChatResponse struct {
+	Response        string  `json:"response"`
+	ModelUsed       string  `json:"modelUsed"`
+	ConfidenceScore float64 `json:"confidenceScore"`
+	Summary         string  `json:"summary"`
+}
+
+type AIServiceClient struct {
 	baseURL    string
 	httpClient *http.Client
 }
 
-// NewAIRouterService สร้าง instance ด้วย baseURL เช่น "http://localhost:8000/ai"
-func NewAIRouterService(baseURL string) *AIRouterService {
-	return &AIRouterService{
-		baseURL: baseURL,
-		httpClient: &http.Client{
-			Timeout: 10 * time.Second,
-		},
+func NewAIServiceClient(baseURL string) *AIServiceClient {
+	return &AIServiceClient{
+		baseURL:    baseURL,
+		httpClient: &http.Client{Timeout: 15 * time.Second},
 	}
 }
 
-// Chat: ส่ง POST ไปที่ <baseURL>/chat
-func (s *AIRouterService) Chat(ctx context.Context, reqPayload AIRequest) (*AIResponse, error) {
-	url := fmt.Sprintf("%s/chat", s.baseURL)
-	return s.sendRequest(ctx, url, reqPayload)
-}
-
-// DailyCard: ส่ง POST ไปที่ <baseURL>/daily_card
-func (s *AIRouterService) DailyCard(ctx context.Context, userID, deck, date string) (*AIResponse, error) {
-	payload := map[string]interface{}{
-		"user_id": userID,
-		"deck":    deck,
-		"date":    date,
-	}
-	url := fmt.Sprintf("%s/daily_card", s.baseURL)
-	return s.sendRaw(ctx, url, payload)
-}
-
-// InterpretCard: ส่ง POST ไปที่ <baseURL>/interpret
-func (s *AIRouterService) InterpretCard(ctx context.Context, userID string, cardIDs []string) (*AIResponse, error) {
-	payload := map[string]interface{}{
-		"user_id": userID,
-		"cards":   cardIDs,
-	}
-	url := fmt.Sprintf("%s/interpret", s.baseURL)
-	return s.sendRaw(ctx, url, payload)
-}
-
-func (s *AIRouterService) sendRequest(ctx context.Context, url string, payload AIRequest) (*AIResponse, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
+// Interpret
+func (c *AIServiceClient) Interpret(ctx context.Context, req AIInterpretRequest) (*AIInterpretResponse, error) {
+	url := fmt.Sprintf("%s/interpret", c.baseURL)
+	data, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("ai-service returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("ai-service interpret status %d", resp.StatusCode)
 	}
-
-	var aiResp AIResponse
+	var aiResp AIInterpretResponse
 	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
 		return nil, err
 	}
 	return &aiResp, nil
 }
 
-func (s *AIRouterService) sendRaw(ctx context.Context, url string, payload map[string]interface{}) (*AIResponse, error) {
-	data, err := json.Marshal(payload)
-	if err != nil {
-		return nil, err
-	}
-	req, err := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
-	if err != nil {
-		return nil, err
-	}
-	req.Header.Set("Content-Type", "application/json")
-
-	resp, err := s.httpClient.Do(req)
+// Summarize
+func (c *AIServiceClient) Summarize(ctx context.Context, req AISummarizeRequest) (*AISummarizeResponse, error) {
+	url := fmt.Sprintf("%s/summarize", c.baseURL)
+	data, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
 	if err != nil {
 		return nil, err
 	}
 	defer resp.Body.Close()
-
 	if resp.StatusCode >= 400 {
-		return nil, fmt.Errorf("ai-service returned status %d", resp.StatusCode)
+		return nil, fmt.Errorf("ai-service summarize status %d", resp.StatusCode)
 	}
-
-	var aiResp AIResponse
+	var aiResp AISummarizeResponse
 	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
 		return nil, err
 	}
 	return &aiResp, nil
+}
+
+// Chat
+func (c *AIServiceClient) Chat(ctx context.Context, req AIChatRequest) (*AIChatResponse, error) {
+	url := fmt.Sprintf("%s/chat", c.baseURL)
+	data, _ := json.Marshal(req)
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("ai-service chat status %d", resp.StatusCode)
+	}
+	var aiResp AIChatResponse
+	if err := json.NewDecoder(resp.Body).Decode(&aiResp); err != nil {
+		return nil, err
+	}
+	return &aiResp, nil
+}
+
+// TunePrompt
+func (c *AIServiceClient) TunePrompt(ctx context.Context, tuneID, model, candidatePrompt, testQuestion string) (map[string]interface{}, error) {
+	url := fmt.Sprintf("%s/tune_prompt", c.baseURL)
+	payload := map[string]string{
+		"tuneId":          tuneID,
+		"model":           model,
+		"candidatePrompt": candidatePrompt,
+		"testQuestion":    testQuestion,
+	}
+	data, _ := json.Marshal(payload)
+	httpReq, _ := http.NewRequestWithContext(ctx, "POST", url, bytes.NewBuffer(data))
+	httpReq.Header.Set("Content-Type", "application/json")
+	resp, err := c.httpClient.Do(httpReq)
+	if err != nil {
+		return nil, err
+	}
+	defer resp.Body.Close()
+	if resp.StatusCode >= 400 {
+		return nil, fmt.Errorf("ai-service tune_prompt status %d", resp.StatusCode)
+	}
+	var result map[string]interface{}
+	if err := json.NewDecoder(resp.Body).Decode(&result); err != nil {
+		return nil, err
+	}
+	return result, nil
 }
