@@ -5,9 +5,12 @@ import (
 	"context"
 	"fmt"
 	"log"
+	"os"
+	"strings"
 	"time"
 
 	"cloud.google.com/go/firestore"
+	"google.golang.org/api/iterator"
 )
 
 // Client ถูก initialize ไว้ใน InitFirestore()
@@ -82,4 +85,137 @@ func SaveBotMessage(sessionId, userId, text, modelUsed string) {
 		log.Println("Error saving bot message:", err)
 		return
 	}
+}
+
+// GetSessionMessages ดึงข้อความ user ทั้งหมดใน session
+func GetSessionMessages(sessionID string) ([]string, error) {
+	ctx := context.Background()
+	docRef := Client.Collection("conversations").Doc(sessionID)
+
+	now := time.Now()
+	year, month, _ := now.Date()
+	subcol := fmt.Sprintf("messages_%04d_%02d", year, int(month))
+
+	iter := docRef.Collection(subcol).Where("sender", "==", "user").Documents(ctx)
+	defer iter.Stop()
+
+	var messages []string
+	for {
+		doc, err := iter.Next()
+		if err != nil {
+			break
+		}
+		text, _ := doc.Data()["text"].(string)
+		messages = append(messages, text)
+	}
+	return messages, nil
+}
+
+// SaveInterpretResult บันทึก intent/emotion analysis
+func SaveInterpretResult(userID, convID, intent string, confidence float64) {
+	ctx := context.Background()
+	doc := Client.Collection("conversations").Doc(convID).Collection("interpretations").NewDoc()
+	payload := map[string]interface{}{
+		"intent":     intent,
+		"confidence": confidence,
+		"timestamp":  time.Now(),
+	}
+	_, err := doc.Set(ctx, payload)
+	if err != nil {
+		log.Println("Error saving interpret result:", err)
+	}
+}
+
+// SavePromptTuneResult บันทึกผล Prompt Tuning
+func SavePromptTuneResult(tuneID, model, prompt string, result map[string]interface{}) {
+	ctx := context.Background()
+	doc := Client.Collection("prompt_tunes").Doc(tuneID).Collection("variants").Doc(model)
+	payload := map[string]interface{}{
+		"model":           model,
+		"promptText":      prompt,
+		"generatedResult": result,
+		"lastTestedAt":    time.Now(),
+	}
+	_, err := doc.Set(ctx, payload)
+	if err != nil {
+		log.Println("Error saving prompt tune result:", err)
+	}
+}
+func InitFirestore() error {
+	projectID := os.Getenv("FIREBASE_PROJECT_ID")
+	cred := os.Getenv("GOOGLE_APPLICATION_CREDENTIALS")
+
+	log.Println("📌 FIREBASE_PROJECT_ID =", projectID)
+	log.Println("📌 GOOGLE_APPLICATION_CREDENTIALS =", cred)
+
+	if projectID == "" {
+		return fmt.Errorf("FIREBASE_PROJECT_ID is not set")
+	}
+	if cred == "" {
+		return fmt.Errorf("GOOGLE_APPLICATION_CREDENTIALS is not set")
+	}
+
+	ctx := context.Background()
+	client, err := firestore.NewClient(ctx, projectID)
+	if err != nil {
+		return fmt.Errorf("firestore.NewClient error: %w", err)
+	}
+
+	Client = client
+	log.Println("✅ Firestore client initialized")
+	return nil
+}
+func SaveSummary(sessionId, summary, intent, emotion string) {
+	ctx := context.Background()
+	_, err := Client.Collection("conversations").Doc(sessionId).Set(ctx, map[string]interface{}{
+		"summary":   summary,
+		"intent":    intent,
+		"emotion":   emotion,
+		"summaryAt": time.Now(),
+	}, firestore.MergeAll)
+	if err != nil {
+		log.Println("Error saving summary:", err)
+	}
+}
+
+type Conversation struct {
+	ID   string
+	Data map[string]interface{}
+}
+
+func JoinText(lines []string) string {
+	return strings.Join(lines, "\n")
+}
+func QueryUserConversations(userID string) []Conversation {
+	ctx := context.Background()
+	iter := Client.Collection("conversations").Where("userId", "==", userID).Documents(ctx)
+
+	result := []Conversation{}
+	for {
+		doc, err := iter.Next()
+		if err == iterator.Done {
+			break
+		}
+		if err != nil {
+			continue
+		}
+		result = append(result, Conversation{
+			ID:   doc.Ref.ID,
+			Data: doc.Data(),
+		})
+	}
+	return result
+}
+
+func CloseFirestore() {
+	if Client != nil {
+		if err := Client.Close(); err != nil {
+			log.Println("Error closing Firestore:", err)
+		}
+	}
+}
+
+// GetFirestoreClient คืนค่า Firestore client ที่ถูก init ไว้แล้ว
+func GetFirestoreClient() *firestore.Client {
+	return Client
 }

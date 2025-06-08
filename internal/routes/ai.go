@@ -16,7 +16,6 @@ import (
 func RegisterAIRoutes(r *gin.Engine) {
 	aiClient := services.NewAIServiceClient(os.Getenv("AI_ROUTER_URL"))
 
-	// /ai/interpret
 	r.POST("/ai/interpret", func(c *gin.Context) {
 		var req services.AIInterpretRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -34,7 +33,6 @@ func RegisterAIRoutes(r *gin.Engine) {
 		c.JSON(http.StatusOK, aiResp)
 	})
 
-	// /ai/summarize
 	r.POST("/ai/summarize", func(c *gin.Context) {
 		var req services.AISummarizeRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
@@ -51,14 +49,13 @@ func RegisterAIRoutes(r *gin.Engine) {
 		c.JSON(http.StatusOK, aiResp)
 	})
 
-	// /ai/chat
 	r.POST("/ai/chat", func(c *gin.Context) {
 		var req services.AIChatRequest
 		if err := c.ShouldBindJSON(&req); err != nil {
 			c.JSON(http.StatusBadRequest, gin.H{"error": err.Error()})
 			return
 		}
-		utils.SaveUserMessage(req.UserID, req.ConversationID, req.Message)
+		utils.SaveUserMessage(req.ConversationID, req.UserID, req.Message)
 
 		ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
 		defer cancel()
@@ -67,11 +64,10 @@ func RegisterAIRoutes(r *gin.Engine) {
 			c.JSON(http.StatusInternalServerError, gin.H{"error": err.Error()})
 			return
 		}
-		utils.SaveBotMessage(req.UserID, req.ConversationID, aiResp.Response, aiResp.ModelUsed)
+		utils.SaveBotMessage(req.ConversationID, req.UserID, aiResp.Response, aiResp.ModelUsed)
 		c.JSON(http.StatusOK, aiResp)
 	})
 
-	// /ai/tune_prompt
 	r.POST("/ai/tune_prompt", func(c *gin.Context) {
 		var body struct {
 			TuneID          string `json:"tuneId"`

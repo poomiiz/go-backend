@@ -4,3 +4,14 @@ node_modules/
 .DS_Store
 serviceAccountKey.json
 git-update.bat
+# .dockerignore
+
+.git
+.gitignore
+node_modules
+vendor
+*.log
+*.md
+.DS_Store
+*.env
+config/serviceAccountKey.json

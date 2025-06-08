@@ -12,10 +12,26 @@ import (
 	"time"
 
 	"github.com/gin-gonic/gin"
-	"github.com/google/uuid" // ใช้สำหรับสร้าง sessionId แบบสุ่ม
+	"github.com/google/uuid"
 	"github.com/poomiiz/go-backend/internal/services"
 	"github.com/poomiiz/go-backend/internal/utils"
 )
+
+// struct ที่ใช้รับ event จาก LINE webhook
+type lineEvent struct {
+	Events []eventObj `json:"events"`
+}
+
+type eventObj struct {
+	ReplyToken string `json:"replyToken"`
+	Message    struct {
+		Type string `json:"type"`
+		Text string `json:"text"`
+	} `json:"message"`
+	Source struct {
+		UserID string `json:"userId"`
+	} `json:"source"`
+}
 
 func RegisterLineWebhook(r *gin.Engine) {
 	aiURL := os.Getenv("AI_ROUTER_URL")
@@ -40,13 +56,13 @@ func RegisterLineWebhook(r *gin.Engine) {
 			replyToken := e.ReplyToken
 			incomingText := e.Message.Text
 
-			// **1) สร้าง session ใหม่ทุกครั้ง (หรืออาจจะเช็คว่า user มี session ค้างไว้หรือไม่)
-			sessionId := uuid.New().String() // ex: "e4b8a3cd-9f7b-4d9a-8f1d-3c1234567890"
+			// สร้าง session ใหม่
+			sessionId := uuid.New().String()
 
-			// 2) บันทึกข้อความจาก user ลง Firestore ใช้ sessionId
+			// บันทึกข้อความผู้ใช้
 			utils.SaveUserMessage(sessionId, userID, incomingText)
 
-			// 3) เรียก AI Service แล้วรับผลลัพธ์
+			// เรียก AI service
 			aiReq := services.AIChatRequest{
 				UserID:         userID,
 				ConversationID: sessionId,
@@ -76,13 +92,60 @@ func RegisterLineWebhook(r *gin.Engine) {
 				continue
 			}
 
-			// 4) บันทึกข้อความ bot ลง Firestore ใช้ sessionId เดิม
+			// บันทึกข้อความจาก bot
 			utils.SaveBotMessage(sessionId, userID, aiResp.Response, aiResp.ModelUsed)
 
-			// 5) ส่ง reply กลับ LINE
+			// ส่งข้อความกลับ LINE
 			replyMessage(replyToken, aiResp.Response)
+
+			// 🔁 สรุปบทสนทนา async
+			go summarizeSession(sessionId)
 		}
 
 		c.Status(http.StatusOK)
 	})
+}
+
+// ฟังก์ชันส่งข้อความตอบกลับ LINE
+func replyMessage(replyToken string, message string) {
+	endpoint := "https://api.line.me/v2/bot/message/reply"
+	payload := map[string]interface{}{
+		"replyToken": replyToken,
+		"messages": []map[string]string{
+			{
+				"type": "text",
+				"text": message,
+			},
+		},
+	}
+	jsonBody, _ := json.Marshal(payload)
+
+	req, _ := http.NewRequest("POST", endpoint, bytes.NewBuffer(jsonBody))
+	req.Header.Set("Content-Type", "application/json")
+	req.Header.Set("Authorization", "Bearer "+os.Getenv("LINE_CHANNEL_ACCESS_TOKEN"))
+
+	client := &http.Client{}
+	resp, err := client.Do(req)
+	if err != nil {
+		fmt.Println("LINE API error:", err)
+		return
+	}
+	defer resp.Body.Close()
+}
+
+// summarizeSession ดึงข้อความทั้งหมดจาก session แล้วส่งไปสรุป
+func summarizeSession(sessionId string) {
+	messages, _ := utils.GetSessionMessages(sessionId)
+	fullText := utils.JoinText(messages)
+
+	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
+	defer cancel()
+
+	summary, err1 := services.AISummarize(ctx, fullText)
+	intent, emotion, err2 := services.AIInterpret(ctx, fullText)
+
+	if err1 == nil && err2 == nil {
+		utils.SaveSummary(sessionId, summary, intent, fmt.Sprintf("%.2f", emotion))
+	}
+
 }

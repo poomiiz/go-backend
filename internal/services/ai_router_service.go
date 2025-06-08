@@ -48,6 +48,16 @@ type AIServiceClient struct {
 	httpClient *http.Client
 }
 
+func AISummarize(ctx context.Context, text string) (string, error) {
+	// ดัดแปลงตามที่ใช้จริง ถ้าใช้ AIServiceClient ก็เรียกผ่านมัน
+	return "summary result", nil
+}
+
+func AIInterpret(ctx context.Context, text string) (string, float64, error) {
+	// return intent, confidence
+	return "general", 0.95, nil
+}
+
 func NewAIServiceClient(baseURL string) *AIServiceClient {
 	return &AIServiceClient{
 		baseURL:    baseURL,
