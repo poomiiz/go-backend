@@ -70,7 +70,8 @@ func RegisterLineWebhook(r *gin.Engine) {
 				Model:          aiModel,
 			}
 			reqBody, _ := json.Marshal(aiReq)
-			aiEndpoint := fmt.Sprintf("%s/chat", aiURL)
+			aiEndpoint := fmt.Sprintf("%s/ai/chat", aiURL)
+
 			httpReq, _ := http.NewRequestWithContext(context.Background(), "POST", aiEndpoint, bytes.NewBuffer(reqBody))
 			httpReq.Header.Set("Content-Type", "application/json")
 			httpClient := &http.Client{Timeout: 20 * time.Second}

@@ -1,3 +1,4 @@
+// go-backend\internal\routes\admin\prompt.go
 package routes
 
 import (

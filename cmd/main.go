@@ -9,6 +9,7 @@ import (
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
+	"github.com/poomiiz/go-backend/internal/routes"
 	adminroutes "github.com/poomiiz/go-backend/internal/routes/admin"
 	"github.com/poomiiz/go-backend/internal/utils"
 )
@@ -38,13 +39,21 @@ func main() {
 	}
 
 	r := gin.Default()
-
+	routes.RegisterUserRoutes(r)
+	routes.RegisterCoinRoutes(r)
+	routes.RegisterPackageRoutes(r)
+	routes.RegisterPaymentRoutes(r)
+	routes.RegisterNotificationRoutes(r)
+	routes.RegisterAIRoutes(r)
+	routes.RegisterReviewRoutes(r)
+	routes.RegisterRankRoutes(r)
+	routes.RegisterBookingRoutes(r)
+	routes.RegisterLineWebhook(r)
 	// เรียกใช้จริงจาก internal/routes/admin
 	adminroutes.RegisterPromptRoutes(r, utils.GetFirestoreClient())
 	adminroutes.RegisterConfigRoutes(r, utils.GetFirestoreClient())
 	adminroutes.RegisterLogsRoutes(r, utils.GetFirestoreClient())
 	adminroutes.RegisterDeckRoutes(r, utils.GetFirestoreClient())
-
 	// Health check
 	r.GET("/healthz", func(c *gin.Context) {
 		c.JSON(200, gin.H{
